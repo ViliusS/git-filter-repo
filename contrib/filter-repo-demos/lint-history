@@ -30,7 +30,7 @@ near the top of git-filter-repo.
 # Technically, if you are only running on all non-binary files and don't care
 # about filenames, then this program could be replaced by a "one-liner"; e.g.
 #    git filter-repo --force --blob-callback '
-#      if not any(x == b"0" for x in blob.data[0:8192]):
+#      if not b"\0" in blob.data[0:8192]:
 #        filename = '.git/info/tmpfile'
 #        with open(filename, "wb") as f:
 #          f.write(blob.data)
@@ -59,6 +59,9 @@ example_text = '''CALLBACK
         def is_relevant(filename):
             BODY
 
+    Where filename is the full relative path from the toplevel of the
+    repository.
+
     Thus, to only run on files with a ".txt" extension you would run
         lint-history --relevant 'return filename.endswith(b".txt")' ...
 
@@ -69,6 +72,14 @@ EXAMPLES
 
     To run eslint --fix on all .js files in history:
         lint-history --relevant 'return filename.endswith(b".js")' eslint --fix
+
+INTERNALS
+
+    Linting of files in history will be done by writing the files to a
+    temporary directory before running the linting program; the
+    location of this temporary directory can be controlled via the
+    TMPDIR environment variable as per
+    https://docs.python.org/3/library/tempfile.html#tempfile.mkdtemp.
     '''
 
 parser = argparse.ArgumentParser(description='Run a program (e.g. code formatter or linter) on files in history',
@@ -114,7 +125,7 @@ def lint_with_real_filenames(commit, metadata):
         f.write(contents_plus_newline[:-1])
 
       # Lint the file
-      subprocess.check_call(lint_args.command + [filename])
+      subprocess.check_call(lint_args.command + [filename.decode('utf-8')])
 
       # Get the new contents
       with open(filename, "rb") as f:
@@ -129,7 +140,7 @@ def lint_with_real_filenames(commit, metadata):
       change.blob_id = blob.id
 
 def lint_non_binary_blobs(blob, metadata):
-  if not any(x == b"0" for x in blob.data[0:8192]):
+  if not b"\0" in blob.data[0:8192]:
     filename = '.git/info/tmpfile'
     with open(filename, "wb") as f:
       f.write(blob.data)
